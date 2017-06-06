@@ -12,7 +12,6 @@ var g_redis redis.Conn
 
 func main() {
 	connetRedis()
-	testGrammar()
 
 	g_net = new(NetAPI)
 	g_net.Init(g_redis)
@@ -32,7 +31,7 @@ func Hello(w http.ResponseWriter, req *http.Request) {
 
 func connetRedis() {
 	var err interface{}
-	g_redis, err = redis.Dial("tcp", "127.0.0.1:6379")
+	g_redis, err = redis.Dial("tcp", REDIS_IP)
 	if err != nil {
 		fmt.Println(err)
 		return
