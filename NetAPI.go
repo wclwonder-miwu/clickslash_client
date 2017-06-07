@@ -5,26 +5,31 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
 
+	. "clickslash/model"
 	. "clickslash/protos"
+	. "clickslash/utils"
 
 	"github.com/garyburd/redigo/redis"
 )
 
 type NetAPI struct {
-	x      int
-	predis redis.Conn
+	x         int
+	redisConn redis.Conn
+	redisBase *Redisbase
 }
 
-func (this *NetAPI) Init(predis redis.Conn) {
-	this.predis = predis
+func (this *NetAPI) Init() {
+
+	this.redisBase, this.redisConn = NewRedisbase()
 
 }
 
-func (net *NetAPI) MainHandler(w http.ResponseWriter, req *http.Request) {
+func (this *NetAPI) MainHandler(w http.ResponseWriter, req *http.Request) {
 	//获取客户端通过GET/POST方式传递的参数
 	req.ParseForm()
 
@@ -40,14 +45,14 @@ func (net *NetAPI) MainHandler(w http.ResponseWriter, req *http.Request) {
 	switch param_r[0] {
 	case "register/create":
 		account, _ := req.Form["account"]
-		strRet = net.createAccount(&account[0])
+		strRet = this.createAccount(&account[0])
 	case "login":
 		uid, _ := req.Form["uid"]
 		password, _ := req.Form["password"]
-		strRet = net.onLogin(&uid[0], &password[0])
+		strRet = this.onLogin(&uid[0], &password[0])
 	case "user":
 		access_token, _ := req.Form["access_token"]
-		strRet = net.onUser(&access_token[0])
+		strRet = this.onUser(&access_token[0])
 		//strRet=fmt.Sprintf("%s","{\"ret\":0,\"user\":{\"uid\":2786,\"coin\":0,\"energy\":15,\"max_energy\":15,\"last_recover\":1491965576,\"day_recover\":0,\"last_star\":0,\"cost_star\":0,\"energy_buf\":0,\"gift_bought\":[],\"collect\":[],\"map_gift\":[],\"medal_lv\":0,\"icon\":3,\"stars\":0,\"nick\":\"冒险者2786\",\"level\":0,\"exp\":0,\"comCardIndex\":0,\"bind\":0,\"exchange\":0,\"skin\":\"\"},\"blocks\":[],\"items\":[],\"cur_level\":0}")
 	case "item/gift":
 		strRet = fmt.Sprintf("%s", "{\"ret\":0,\"data\":[],\"last_time\":0}")
@@ -71,10 +76,10 @@ func (net *NetAPI) MainHandler(w http.ResponseWriter, req *http.Request) {
 		id, _ := req.Form["id"]
 		numid, _ := strconv.Atoi(id[0])
 		access_token, _ := req.Form["access_token"]
-		strRet = net.onBegin(numid, &access_token[0])
+		strRet = this.onBegin(numid, &access_token[0])
 	case "play":
 		access_token, _ := req.Form["access_token"]
-		strRet = net.onPlay(&access_token[0])
+		strRet = this.onPlay(&access_token[0])
 	default:
 		w.Write([]byte("error"))
 	}
@@ -82,31 +87,38 @@ func (net *NetAPI) MainHandler(w http.ResponseWriter, req *http.Request) {
 	w.Write([]byte(strRet))
 }
 
-func (net *NetAPI) createAccount(machine *string) string {
+func (this *NetAPI) createAccount(machine *string) string {
 	//是否已经存在
 	var strErr string = fmt.Sprintf("%s", "{\"ret\":1}")
-	if net.isUserExist(machine) {
+	if this.isMachineExist(machine) {
 		fmt.Println("UserExist=" + *machine)
 		return strErr
 	}
 
-	id_count, err := redis.String(net.predis.Do("GET", "id_count"))
+	id_count, err := redis.String(this.redisConn.Do("GET", "id_count"))
 	if err != nil {
-		net.predis.Do("SET", "id_count", 0)
+		this.redisConn.Do("SET", "id_count", 0)
 		id_count = "1"
 	}
-	net.predis.Do("INCR", "id_count")
+	this.redisConn.Do("INCR", "id_count")
 
 	//创建并返回id，密码。创建用户属性表
+	uid, _ := strconv.Atoi(id_count)
+	password := GetRandomString(10)
 	strKey := fmt.Sprintf("user%sproperty", id_count)
-	net.predis.Do("HSET", strKey, "machine", *machine)
-	net.predis.Do("HSET", strKey, "password", "WVlSi01E")
-	net.initAccountData(id_count)
+	user := this.initAccountData(id_count)
 
 	tempMap := make(map[string]interface{})
 	tempMap["ret"] = 0
-	tempMap["uid"], _ = strconv.Atoi(id_count)
-	tempMap["password"] = GetRandomString(10)
+	tempMap["uid"] = int32(uid)
+	tempMap["password"] = password
+
+	//存redis
+	user.Uid = int32(uid)
+	user.Password = password
+	RedisSetStruct(this.redisConn, strKey, user)
+	//保存机器码
+	this.redisConn.Do("HSET", "machines", *machine)
 
 	str, err := json.Marshal(tempMap)
 	if err != nil {
@@ -116,44 +128,38 @@ func (net *NetAPI) createAccount(machine *string) string {
 	return string(str)
 }
 
-func (this *NetAPI) initAccountData(uid string) {
+func (this *NetAPI) initAccountData(uid string) *TUser {
 	temp := &TUser{}
-	fmt.Println(temp)
+	temp.MaxEnergy = 15
+	temp.Energy = 15
+	temp.Icon = int32(rand.Intn(10))
+	if temp.Icon == 0 {
+		temp.Icon = 1
+	}
+
+	return temp
 }
 
 //用户是否存在
-func (net *NetAPI) isUserExist(machine *string) bool {
-	values, err := redis.Values(net.predis.Do("lrange", "id_list", "0", "-1"))
-	fmt.Println("isUserExist1")
+func (this *NetAPI) isMachineExist(machine *string) bool {
+	_, err := redis.String(this.redisConn.Do("HGET", "machines", *machine))
 
 	if err != nil {
 		fmt.Println(err)
+		return false
+	} else {
 		return true
-	}
-
-	fmt.Println("isUserExist2")
-	//机器码是否存在
-	for _, v := range values {
-		//检查每个用户的ID
-
-		strKey := fmt.Sprintf("user%sproperty", string(v.([]uint8)[0]))
-		str, _ := redis.String(net.predis.Do("HGET", strKey, "machine"))
-
-		if strings.EqualFold(str, *machine) {
-			fmt.Println("user already exist")
-			return true
-		}
 	}
 
 	return false
 }
 
-func (net *NetAPI) onLogin(uid *string, password *string) string {
+func (this *NetAPI) onLogin(uid *string, password *string) string {
 
 	strKey := fmt.Sprintf("user%sproperty", *uid)
 	fmt.Println(strKey)
 
-	password_server, _ := redis.String(net.predis.Do("HGET", strKey, "password"))
+	password_server, _ := redis.String(this.redisConn.Do("HGET", strKey, "Password"))
 
 	md5Ctx := md5.New()
 	md5Ctx.Write([]byte(password_server))
@@ -162,13 +168,18 @@ func (net *NetAPI) onLogin(uid *string, password *string) string {
 
 	if !strings.EqualFold(*password, password_server) {
 		var strErr string = fmt.Sprintf("%s", "{\"ret\":1}")
+		fmt.Println("密码错误cl=%s,server=%s", *password, password_server)
 		return strErr
 	}
 
 	tempMap := make(map[string]interface{})
 	tempMap["ret"] = 0
-	tempMap["access_token"] = *uid + "#" + GetRandomString(20)
 
+	access_token := *uid + "#" + GetRandomString(20)
+	tempMap["access_token"] = access_token
+
+	//
+	this.redisBase.UpdateToken(uid, &access_token)
 	str, err := json.Marshal(tempMap)
 	if err != nil {
 		fmt.Println(err)
@@ -193,7 +204,7 @@ func (this *NetAPI) onUser(access_token *string) string {
 
 	user := createMapUser()
 
-	values, _ := redis.StringMap(this.predis.Do("HGETALL", strKey))
+	values, _ := redis.StringMap(this.redisConn.Do("HGETALL", strKey))
 	for k, v := range values {
 		user[k] = v
 	}
@@ -217,7 +228,7 @@ func (this *NetAPI) onBegin(level int, access_token *string) string {
 	strKey := fmt.Sprintf("user%sproperty", uid)
 
 	//剩余体力
-	temp, _ := redis.String(this.predis.Do("HGET", strKey, "energy"))
+	temp, _ := redis.String(this.redisConn.Do("HGET", strKey, "Energy"))
 	energy, _ := strconv.Atoi(temp)
 
 	tempMap := make(map[string]interface{})
@@ -231,7 +242,7 @@ func (this *NetAPI) onBegin(level int, access_token *string) string {
 
 	user := createMapUser()
 	//user info
-	values, _ := redis.StringMap(this.predis.Do("HGETALL", strKey))
+	values, _ := redis.StringMap(this.redisConn.Do("HGETALL", strKey))
 	for k, v := range values {
 		user[k] = v
 	}
@@ -261,7 +272,7 @@ func (this *NetAPI) onPlay(access_token *string) string {
 
 	user := createMapUser()
 	//user info
-	values, _ := redis.StringMap(this.predis.Do("HGETALL", strKey))
+	values, _ := redis.StringMap(this.redisConn.Do("HGETALL", strKey))
 	for k, v := range values {
 		user[k] = v
 	}

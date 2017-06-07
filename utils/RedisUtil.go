@@ -12,7 +12,7 @@
 
  Copyright (c) Shenzhen Team Blemobi.
 **************************************************************************go*/
-package util
+package utils
 
 import (
 	"errors"
@@ -125,7 +125,7 @@ func setTypeValue(v reflect.Value, reply interface{}, err error) {
 func RedisSetStruct(conn redis.Conn, key string, obj interface{}) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			Warning("RedisSetStruct fail, err=%s", r)
+			fmt.Println("RedisSetStruct fail, err=%s", r)
 			err = errors.New("RedisSetStruct Fail")
 		}
 	}()

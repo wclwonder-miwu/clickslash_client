@@ -1,9 +1,14 @@
 package main
 
 import (
+	. "clickslash/model"
 	. "clickslash/protos"
+	. "clickslash/utils"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
-	"reflect"
+
+	//"reflect"
 	"testing"
 
 	"github.com/garyburd/redigo/redis"
@@ -11,22 +16,39 @@ import (
 
 func TestMain(t *testing.T) {
 
-	var some interface{}
-	temp := &TUser{}
-	temp.Coin = 5
-	fmt.Println(temp)
+	//testRedis()
+	//testData()
+	showUserPass()
+}
 
-	some = temp
-
-	s := reflect.ValueOf(some).Elem()
-	typeOfT := s.Type() //把s.Type()返回的Type对象复制给typeofT，typeofT也是一个反射。
-	for i := 0; i < s.NumField(); i++ {
-		f := s.Field(i) //迭代s的各个域，注意每个域仍然是反射。
-		fmt.Printf("%d: %s %s = %v\n", i,
-			typeOfT.Field(i).Name, f.Type(), f.Interface()) //提取了每个域的名字
-		//11:Icon int32=0
+func testData() {
+	g_redis := connectRedis()
+	_, err := redis.String(g_redis.Do("HGET", "machines", "881"))
+	if err != nil {
+		fmt.Println("账号不存在")
+		fmt.Println(err)
+	} else {
+		fmt.Println("账号存在")
 	}
+}
 
+func showUserPass() {
+	g_redis := connectRedis()
+	str, _ := redis.String(g_redis.Do("HGET", "user1property", "Password"))
+	fmt.Println(str)
+	fmt.Println(showPassMd5(str))
+
+	str2, _ := redis.String(g_redis.Do("HGET", "user2property", "Password"))
+	fmt.Println(str2)
+	fmt.Println(showPassMd5(str2))
+}
+
+func showPassMd5(password_server string) string {
+	md5Ctx := md5.New()
+	md5Ctx.Write([]byte(password_server))
+	cipherStr := md5Ctx.Sum(nil)
+	password_server = hex.EncodeToString(cipherStr)
+	return password_server
 }
 
 func testRedis() {
@@ -36,17 +58,29 @@ func testRedis() {
 	if err != nil {
 		fmt.Println("get id_count err")
 		fmt.Println(err)
+		g_redis.Do("SET", "id_count", 0)
 		return
 	}
 
 	fmt.Println(id_count)
+
+	temp := &TUser{}
+	temp.Coin = 5
+
+	//RedisSetStruct(g_redis, "user0property", temp)
+	RedisGetStruct(g_redis, "user0property", temp)
+
+	m := make(map[string]interface{})
+	Redis2Map(g_redis, "user0property", m)
+	fmt.Println(len(m))
+
 }
 
 func connectRedis() redis.Conn {
 
 	fmt.Println("connectRedis")
 	var err interface{}
-	g_redis, err = redis.Dial("tcp", REDIS_IP)
+	g_redis, err := redis.Dial("tcp", REDIS_IP)
 	if err != nil {
 		fmt.Println(err)
 		return nil
