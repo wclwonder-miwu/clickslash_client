@@ -6,6 +6,7 @@ import (
 	. "clickslash/utils"
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 
 	//"reflect"
@@ -15,21 +16,26 @@ import (
 )
 
 func TestMain(t *testing.T) {
-
+	fmt.Println(ERROR_STRING)
 	//testRedis()
-	//testData()
-	showUserPass()
+	testData()
+	//showUserPass()
 }
 
 func testData() {
-	g_redis := connectRedis()
-	_, err := redis.String(g_redis.Do("HGET", "machines", "881"))
+	temp, _ := NewRedisbase()
+
+	uid := "1"
+	tempMap := temp.CreateMapUser(&uid)
+	fmt.Println(tempMap)
+
+	str1, err := json.Marshal(tempMap)
 	if err != nil {
-		fmt.Println("账号不存在")
 		fmt.Println(err)
-	} else {
-		fmt.Println("账号存在")
 	}
+
+	fmt.Println("showlog=")
+	fmt.Println(string(str1))
 }
 
 func showUserPass() {

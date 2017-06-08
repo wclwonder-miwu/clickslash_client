@@ -1,8 +1,8 @@
 package model
 
 import (
-	//	. "clickslash/protos"
-	//	. "clickslash/utils"
+	. "clickslash/protos"
+	. "clickslash/utils"
 	"fmt"
 	"strconv"
 	"strings"
@@ -51,17 +51,51 @@ func GetUser(key string) {
 	fmt.Println("getuserdata")
 }
 
+func (this *Redisbase) CreateMapUser(uid *string) map[string]interface{} {
+	retMap := map[string]interface{}{}
+
+	//先获取到struct，redis可能缺一些数据
+	tUser := &TUser{}
+	RedisGetStruct(this.redisConn, "user:"+*uid+":property", tUser)
+	StructCoverMap(tUser, retMap)
+	//其他数组字段
+	//user:id:gift_bought已购买礼包
+	//user:id:collect已收集勋章
+	//user:id:map_gift礼包
+
+	propName := []string{"gift_bought", "collectStr", "map_giftStr"}
+
+	for _, v := range propName {
+		retStr, err := redis.String(this.redisConn.Do("GET", "user:"+*uid+":"+v))
+		if err != nil {
+			retMap[v] = []int{}
+		} else {
+			retMap[v] = strings.Split(retStr, ",")
+		}
+	}
+
+	return retMap
+}
+
+func (this *Redisbase) GetLevelConfig(level int32) map[string]string {
+	levelCfg := &TLevelConfig{}
+	RedisHGetStruct(this.redisConn, "levelConfig:"+strconv.Itoa(int(level)), levelCfg)
+	return nil
+}
+
+//更新token
 func (this *Redisbase) UpdateToken(uid *string, token *string) {
 
 	//更新token的时间
 	now := time.Now().Unix()
-	this.redisConn.Do("HSET", "user"+*uid+"token", "time", now)
-	this.redisConn.Do("HSET", "user"+*uid+"token", "token", *token)
+	this.redisConn.Do("HSET", "user:"+*uid+":token", "time", now)
+	this.redisConn.Do("HSET", "user:"+*uid+":token", "token", *token)
 }
 
+//检查token
 func (this *Redisbase) CheckToken(uid *string, token *string) bool {
 	//检查token是否一致和超时
-	timeStr, err := redis.String(this.redisConn.Do("HGET", "user"+*uid+"token", "time"))
+	timeStr, err := redis.String(this.redisConn.Do("HGET", "user:"+*uid+":token", "time"))
 	if err != nil {
 		return false //没有值
 	}
@@ -73,10 +107,11 @@ func (this *Redisbase) CheckToken(uid *string, token *string) bool {
 	}
 
 	//是否一致
-	tokenStr, _ := redis.String(this.redisConn.Do("HGET", "user"+*uid+"token", "token"))
+	tokenStr, _ := redis.String(this.redisConn.Do("HGET", "user:"+*uid+":token", "token"))
 	if !strings.EqualFold(*token, tokenStr) {
 		return false
 	}
 
+	this.UpdateToken(uid, token)
 	return true
 }

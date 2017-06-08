@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -16,6 +17,10 @@ import (
 
 	"github.com/garyburd/redigo/redis"
 )
+
+const ERROR_STRING = `{"ret":1,"msg":"%s"}`
+const ERROR_MSG_TOKEN = `TOKEN ERROR`
+const ERROR_MSG_ENERGY = `ENERGY NOT ENOUGH`
 
 type NetAPI struct {
 	x         int
@@ -42,6 +47,7 @@ func (this *NetAPI) MainHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	var strRet string = ""
+	var ok bool
 	switch param_r[0] {
 	case "register/create":
 		account, _ := req.Form["account"]
@@ -52,8 +58,10 @@ func (this *NetAPI) MainHandler(w http.ResponseWriter, req *http.Request) {
 		strRet = this.onLogin(&uid[0], &password[0])
 	case "user":
 		access_token, _ := req.Form["access_token"]
-		strRet = this.onUser(&access_token[0])
-		//strRet=fmt.Sprintf("%s","{\"ret\":0,\"user\":{\"uid\":2786,\"coin\":0,\"energy\":15,\"max_energy\":15,\"last_recover\":1491965576,\"day_recover\":0,\"last_star\":0,\"cost_star\":0,\"energy_buf\":0,\"gift_bought\":[],\"collect\":[],\"map_gift\":[],\"medal_lv\":0,\"icon\":3,\"stars\":0,\"nick\":\"冒险者2786\",\"level\":0,\"exp\":0,\"comCardIndex\":0,\"bind\":0,\"exchange\":0,\"skin\":\"\"},\"blocks\":[],\"items\":[],\"cur_level\":0}")
+
+		if ok, strRet = this.checkToken(req); ok {
+			strRet = this.onUser(&access_token[0])
+		}
 	case "item/gift":
 		strRet = fmt.Sprintf("%s", "{\"ret\":0,\"data\":[],\"last_time\":0}")
 	case "user/check-energy":
@@ -78,13 +86,26 @@ func (this *NetAPI) MainHandler(w http.ResponseWriter, req *http.Request) {
 		access_token, _ := req.Form["access_token"]
 		strRet = this.onBegin(numid, &access_token[0])
 	case "play":
-		access_token, _ := req.Form["access_token"]
-		strRet = this.onPlay(&access_token[0])
+		if ok, strRet = this.checkToken(req); ok {
+			strRet = this.onPlay(req)
+		}
 	default:
 		w.Write([]byte("error"))
 	}
 
 	w.Write([]byte(strRet))
+}
+
+func (this *NetAPI) checkToken(req *http.Request) (bool, string) {
+	access_token, _ := req.Form["access_token"]
+	str := strings.Split(access_token[0], "#")
+	uid := str[0]
+
+	if !this.redisBase.CheckToken(&uid, &access_token[0]) {
+		return false, fmt.Sprintf(ERROR_STRING, ERROR_MSG_TOKEN)
+	}
+
+	return true, ""
 }
 
 func (this *NetAPI) createAccount(machine *string) string {
@@ -105,7 +126,7 @@ func (this *NetAPI) createAccount(machine *string) string {
 	//创建并返回id，密码。创建用户属性表
 	uid, _ := strconv.Atoi(id_count)
 	password := GetRandomString(10)
-	strKey := fmt.Sprintf("user%sproperty", id_count)
+	strKey := fmt.Sprintf("user:%s:property", id_count)
 	user := this.initAccountData(id_count)
 
 	tempMap := make(map[string]interface{})
@@ -118,7 +139,7 @@ func (this *NetAPI) createAccount(machine *string) string {
 	user.Password = password
 	RedisSetStruct(this.redisConn, strKey, user)
 	//保存机器码
-	this.redisConn.Do("HSET", "machines", *machine)
+	this.redisConn.Do("HSET", "machines", *machine, 1)
 
 	str, err := json.Marshal(tempMap)
 	if err != nil {
@@ -156,7 +177,7 @@ func (this *NetAPI) isMachineExist(machine *string) bool {
 
 func (this *NetAPI) onLogin(uid *string, password *string) string {
 
-	strKey := fmt.Sprintf("user%sproperty", *uid)
+	strKey := fmt.Sprintf("user:%s:property", *uid)
 	fmt.Println(strKey)
 
 	password_server, _ := redis.String(this.redisConn.Do("HGET", strKey, "Password"))
@@ -194,20 +215,14 @@ func (this *NetAPI) onUser(access_token *string) string {
 	str := strings.Split(*access_token, "#")
 	uid := str[0]
 
-	strKey := fmt.Sprintf("user%sproperty", uid)
-
 	tempMap := make(map[string]interface{})
 	tempMap["ret"] = 0
 	tempMap["blocks"] = []int{}
 	tempMap["items"] = []int{}
 	tempMap["cur_level"] = 0
 
-	user := createMapUser()
+	user := this.redisBase.CreateMapUser(&uid)
 
-	values, _ := redis.StringMap(this.redisConn.Do("HGETALL", strKey))
-	for k, v := range values {
-		user[k] = v
-	}
 	tempMap["user"] = user
 
 	str1, err := json.Marshal(tempMap)
@@ -225,7 +240,7 @@ func (this *NetAPI) onUser(access_token *string) string {
 func (this *NetAPI) onBegin(level int, access_token *string) string {
 	str := strings.Split(*access_token, "#")
 	uid := str[0]
-	strKey := fmt.Sprintf("user%sproperty", uid)
+	strKey := fmt.Sprintf("user:%s:property", uid)
 
 	//剩余体力
 	temp, _ := redis.String(this.redisConn.Do("HGET", strKey, "Energy"))
@@ -237,15 +252,11 @@ func (this *NetAPI) onBegin(level int, access_token *string) string {
 	if energy >= 3 {
 		tempMap["ret"] = 0
 	} else {
-		tempMap["ret"] = 0
+		tempMap["ret"] = 1
+		return fmt.Sprintf(ERROR_STRING, ERROR_MSG_ENERGY)
 	}
 
-	user := createMapUser()
-	//user info
-	values, _ := redis.StringMap(this.redisConn.Do("HGETALL", strKey))
-	for k, v := range values {
-		user[k] = v
-	}
+	user := this.redisBase.CreateMapUser(&uid)
 	tempMap["user"] = user
 
 	//返回
@@ -254,23 +265,63 @@ func (this *NetAPI) onBegin(level int, access_token *string) string {
 		fmt.Println(err)
 	}
 
-	fmt.Println("showlog=")
 	fmt.Println(string(str1))
 
 	return string(str1)
 }
 
+func (this *NetAPI) checkSign(req *http.Request) bool {
+	keys := []string{}
+	for k, _ := range req.Form {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	str := ""
+	for i, _ := range keys {
+		if str != "" {
+			str += "&"
+		}
+		if strings.EqualFold(req.Form[keys[i]][0], "sign") {
+			continue
+		}
+		str += keys[i] + "=" + req.Form[keys[i]][0]
+	}
+
+	md5Ctx := md5.New()
+	md5Ctx.Write([]byte(str))
+	cipherStr := md5Ctx.Sum(nil)
+
+	password_server := strings.ToUpper(hex.EncodeToString(cipherStr))
+
+	if strings.EqualFold(password_server, req.Form["sign"][0]) {
+		return true
+	} else {
+		return false
+	}
+}
+
 //关卡结算
-func (this *NetAPI) onPlay(access_token *string) string {
-	str := strings.Split(*access_token, "#")
+func (this *NetAPI) onPlay(req *http.Request) string {
+	access_token, _ := req.Form["access_token"]
+
+	//检测签名
+	if !this.checkSign(req) {
+		return fmt.Sprintf(ERROR_STRING, ERROR_MSG_ENERGY)
+	}
+
+	//判断分数，目标
+	//this.redisBase.GetLevelConfig()
+
+	str := strings.Split(access_token[0], "#")
 	uid := str[0]
-	strKey := fmt.Sprintf("user%sproperty", uid)
+	strKey := fmt.Sprintf("user:%s:property", uid)
 
 	tempMap := make(map[string]interface{})
 	tempMap["ret"] = 0
 	tempMap["pass"] = 1
 
-	user := createMapUser()
+	user := this.redisBase.CreateMapUser(&uid)
 	//user info
 	values, _ := redis.StringMap(this.redisConn.Do("HGETALL", strKey))
 	for k, v := range values {
@@ -293,7 +344,6 @@ func (this *NetAPI) onPlay(access_token *string) string {
 		fmt.Println(err)
 	}
 
-	fmt.Println("showlog=")
 	fmt.Println(string(str1))
 
 	return string(str1)

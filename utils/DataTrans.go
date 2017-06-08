@@ -17,12 +17,13 @@ package utils
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/garyburd/redigo/redis"
 )
 
 //读取redis的map到go的map
-func Redis2Map(conn redis.Conn, key string, m map[string]interface{}) error {
+func Redis2MapAll(conn redis.Conn, key string, m map[string]interface{}) error {
 	//获取键名
 	cachedKeys, err := redis.Strings(conn.Do("HKEYS", key))
 	fieldsLen := len(cachedKeys)
@@ -59,6 +60,10 @@ func StructCoverMap(obj interface{}, m map[string]interface{}) {
 	types := values.Type()
 
 	for i := 0; i < values.NumField(); i++ {
-		m[types.Field(i).Name] = values.Field(i).Interface()
+		m[strings.ToLower(types.Field(i).Name)] = values.Field(i).Interface()
 	}
+}
+
+func Redis2MapField(conn redis.Conn, key string, fields ...string) {
+	conn.Do("HMGET", key, fields)
 }

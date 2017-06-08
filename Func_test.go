@@ -2,20 +2,67 @@ package main
 
 import (
 	"clickslash/Im"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"log"
+	"sort"
+	//"strings"
 	"testing"
 
 	"github.com/golang/protobuf/proto"
 )
 
 func TestMain(t *testing.T) {
-	testGrammar()
+	testPlaySign()
 }
 
 func testGrammar() {
 	//checkAlone("1111111")
 	fmt.Println(len("寒"))
+
+	temp := []int{1, 2, 3, 4, 5}
+	temp2 := []int{6, 7, 8}
+	fmt.Println(temp)
+	temp = append(temp, temp2...)
+	fmt.Println(temp)
+}
+
+func testPlaySign() {
+	params := map[string]string{}
+	//access_token=2786#Njb2jhRCzXJlKQqSRbQy3rWVY23QqvzH&cost=23&ex=3&id=1&map_clear=100&op=5&pigs=2&score=17509&sign=43A494A44F0A8F22A6591719A69F7212
+	params["access_token"] = "2786#Njb2jhRCzXJlKQqSRbQy3rWVY23QqvzH"
+	params["cost"] = "23"
+	params["ex"] = "3"
+	params["id"] = "1"
+	params["map_clear"] = "100"
+	params["op"] = "5"
+	params["pigs"] = "2"
+	params["score"] = "17509"
+
+	keys := []string{}
+	for k, _ := range params {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	fmt.Println(keys)
+
+	str := ""
+	for i, _ := range keys {
+		if str != "" {
+			str += "&"
+		}
+		str += keys[i] + "=" + params[keys[i]]
+	}
+
+	fmt.Println(str)
+	md5Ctx := md5.New()
+	md5Ctx.Write([]byte(str))
+	cipherStr := md5Ctx.Sum(nil)
+
+	password_server := hex.EncodeToString(cipherStr)
+
+	fmt.Println(password_server)
 }
 
 func quickSort2(values []int, left, right int) {
