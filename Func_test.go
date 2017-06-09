@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strconv"
+	"strings"
 	//"strings"
 	"testing"
 
@@ -14,18 +16,24 @@ import (
 )
 
 func TestMain(t *testing.T) {
-	testPlaySign()
+	//testPlaySign()
+	testGrammar()
+}
+
+func savepackage() {
+	fmt.Println(strconv.Atoi("525"))
 }
 
 func testGrammar() {
 	//checkAlone("1111111")
 	fmt.Println(len("寒"))
 
-	temp := []int{1, 2, 3, 4, 5}
-	temp2 := []int{6, 7, 8}
+	temp := "sdkffkf"
+	ff1 := strings.ToUpper(string(temp[0]))
+
+	temp = ff1 + temp[1:]
 	fmt.Println(temp)
-	temp = append(temp, temp2...)
-	fmt.Println(temp)
+
 }
 
 func testPlaySign() {

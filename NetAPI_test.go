@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	//"reflect"
 	"testing"
@@ -16,9 +17,8 @@ import (
 )
 
 func TestMain(t *testing.T) {
-	fmt.Println(ERROR_STRING)
-	//testRedis()
-	testData()
+	testRedis()
+	//testData()
 	//showUserPass()
 }
 
@@ -70,15 +70,17 @@ func testRedis() {
 
 	fmt.Println(id_count)
 
-	temp := &TUser{}
-	temp.Coin = 5
+	temp := &TLevelConfig{}
 
 	//RedisSetStruct(g_redis, "user0property", temp)
-	RedisGetStruct(g_redis, "user0property", temp)
+	RedisGetStruct(g_redis, "levelConfig:2", temp)
 
-	m := make(map[string]interface{})
-	Redis2Map(g_redis, "user0property", m)
-	fmt.Println(len(m))
+	fmt.Println(temp)
+	if strings.EqualFold(temp.Award, "0") {
+		fmt.Println("0000000")
+	} else {
+		fmt.Println("1111111111")
+	}
 
 }
 

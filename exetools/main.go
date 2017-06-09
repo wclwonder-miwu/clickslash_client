@@ -8,7 +8,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"os"
-	//"strconv"
+	"strconv"
 	"strings"
 
 	"github.com/garyburd/redigo/redis"
@@ -22,7 +22,17 @@ func main() {
 	fmt.Println("main start")
 
 	initRedis()
+	//deleteLevelConfigs()
 	readCSV()
+}
+
+func deleteLevelConfigs() {
+	params := []interface{}{}
+	for i := 1; i <= 297; i++ {
+		params = append(params, "levelConfig:"+strconv.Itoa(i))
+	}
+
+	redisConn.Do("DEL", params...)
 }
 
 func initRedis() error {
@@ -46,6 +56,12 @@ func readCSV() {
 
 	title := lines[1]
 	var count int = 0
+
+	//修改第一个字母大写
+	for i, _ := range title {
+		temp := strings.ToUpper(string(title[i][0]))
+		title[i] = temp + title[i][1:]
+	}
 
 	//遍历行
 	for _, line := range lines[2:] {

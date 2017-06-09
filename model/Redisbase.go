@@ -77,10 +77,10 @@ func (this *Redisbase) CreateMapUser(uid *string) map[string]interface{} {
 	return retMap
 }
 
-func (this *Redisbase) GetLevelConfig(level int32) map[string]string {
+func (this *Redisbase) GetLevelConfig(level string) *TLevelConfig {
 	levelCfg := &TLevelConfig{}
-	RedisHGetStruct(this.redisConn, "levelConfig:"+strconv.Itoa(int(level)), levelCfg)
-	return nil
+	RedisHGetStruct(this.redisConn, "levelConfig:"+level, levelCfg)
+	return levelCfg
 }
 
 //更新token

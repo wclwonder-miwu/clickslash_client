@@ -21,6 +21,7 @@ import (
 const ERROR_STRING = `{"ret":1,"msg":"%s"}`
 const ERROR_MSG_TOKEN = `TOKEN ERROR`
 const ERROR_MSG_ENERGY = `ENERGY NOT ENOUGH`
+const ERROR_MSG_CHEAT = `ERROR CHEAT`
 
 type NetAPI struct {
 	x         int
@@ -303,7 +304,7 @@ func (this *NetAPI) checkSign(req *http.Request) bool {
 
 //关卡结算
 func (this *NetAPI) onPlay(req *http.Request) string {
-	access_token, _ := req.Form["access_token"]
+	access_token := req.Form["access_token"][0]
 
 	//检测签名
 	if !this.checkSign(req) {
@@ -311,22 +312,36 @@ func (this *NetAPI) onPlay(req *http.Request) string {
 	}
 
 	//判断分数，目标
-	//this.redisBase.GetLevelConfig()
+	level := req.Form["id"][0]
+	levelCfg := this.redisBase.GetLevelConfig(level)
+	pass := this.checkLevelScore(req, levelCfg)
+	if pass == 2 {
+		//作弊返回
+		return fmt.Sprintf(ERROR_STRING, ERROR_MSG_CHEAT)
+	}
 
-	str := strings.Split(access_token[0], "#")
+	str := strings.Split(access_token, "#")
 	uid := str[0]
-	strKey := fmt.Sprintf("user:%s:property", uid)
+	//strKey := fmt.Sprintf("user:%s:property", uid)
+	//胜利保存数据
+	levelSave := &TLevelSave{}
+	levelSave.Id = levelCfg.ID
+	PigSave, _ := strconv.Atoi(req.Form["pigs"][0])
+	levelSave.PigSave = int32(PigSave)
+	Score, _ := strconv.Atoi(req.Form["score"][0])
+	levelSave.Score = int32(Score)
+
+	if pass == 0 {
+		//User:id:blocks:n
+		fields := []int{0, 2, 3, 4}
+		RedisHSetStruct(this.redisConn, "user:"+uid+":blocks"+level, levelSave, fields...)
+	}
 
 	tempMap := make(map[string]interface{})
 	tempMap["ret"] = 0
-	tempMap["pass"] = 1
+	tempMap["pass"] = pass
 
 	user := this.redisBase.CreateMapUser(&uid)
-	//user info
-	values, _ := redis.StringMap(this.redisConn.Do("HGETALL", strKey))
-	for k, v := range values {
-		user[k] = v
-	}
 	tempMap["user"] = user
 
 	//关卡数据
@@ -347,4 +362,47 @@ func (this *NetAPI) onPlay(req *http.Request) string {
 	fmt.Println(string(str1))
 
 	return string(str1)
+}
+
+//判断分数和目标是否达到.胜利、失败、作弊
+func (this *NetAPI) checkLevelScore(req *http.Request, levelCfg *TLevelConfig) int {
+	scores := levelCfg.Score
+	scores = scores[1 : len(scores)-1]
+	scores0, _ := strconv.Atoi(string(scores[0]))
+
+	score, _ := strconv.Atoi(req.Form["score"][0])
+	if score < scores0 {
+		return 1
+	} else if score > scores0*2 {
+		return 2
+	}
+
+	//百分比类型的关卡
+	if levelCfg.Percent > 0 {
+		percent, _ := strconv.Atoi(req.Form["map_clear"][0])
+
+		if percent >= int(levelCfg.Percent) {
+			if percent > int(levelCfg.Percent*2) {
+				return 2
+			}
+			return 0
+		} else {
+			return 1
+		}
+	}
+
+	//宠物营救数量
+	target, _ := strconv.Atoi(req.Form["pigs"][0])
+	if int(levelCfg.Target) <= target {
+		return 0
+	} else {
+		return 1
+	}
+}
+
+//如果有道具，送道具
+func (this *NetAPI) checkLevelGift(uid *string, levelCfg *TLevelConfig) {
+	if levelCfg.Award == "" {
+
+	}
 }
