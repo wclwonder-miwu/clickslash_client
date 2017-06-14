@@ -33,6 +33,7 @@ func deleteLevelConfigs() {
 	}
 
 	redisConn.Do("DEL", params...)
+
 }
 
 func initRedis() error {

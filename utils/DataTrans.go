@@ -54,13 +54,13 @@ func Redis2MapAll(conn redis.Conn, key string, m map[string]interface{}) error {
 	return nil
 }
 
-//结构字段放到map
+//结构字段放到map,key转成json的tag
 func StructCoverMap(obj interface{}, m map[string]interface{}) {
 	values := reflect.ValueOf(obj).Elem()
 	types := values.Type()
 
 	for i := 0; i < values.NumField(); i++ {
-		m[strings.ToLower(types.Field(i).Name)] = values.Field(i).Interface()
+		m[strings.ToLower(types.Field(i).Tag.Get("json"))] = values.Field(i).Interface()
 	}
 }
 

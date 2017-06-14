@@ -17,16 +17,16 @@ import (
 )
 
 func TestMain(t *testing.T) {
-	testRedis()
-	//testData()
+	//testRedis()
+	testData()
 	//showUserPass()
 }
 
 func testData() {
 	temp, _ := NewRedisbase()
 
-	uid := "1"
-	tempMap := temp.CreateMapUser(&uid)
+	uid := "5"
+	tempMap := temp.GetItemMap(&uid) //temp.CreateMapUser(&uid)
 	fmt.Println(tempMap)
 
 	str1, err := json.Marshal(tempMap)
@@ -60,7 +60,7 @@ func showPassMd5(password_server string) string {
 func testRedis() {
 	g_redis := connectRedis()
 
-	id_count, err := redis.String(g_redis.Do("GET", "id_count"))
+	values, err := redis.Values(g_redis.Do("HKEYS", "user:5:token"))
 	if err != nil {
 		fmt.Println("get id_count err")
 		fmt.Println(err)
@@ -68,19 +68,7 @@ func testRedis() {
 		return
 	}
 
-	fmt.Println(id_count)
-
-	temp := &TLevelConfig{}
-
-	//RedisSetStruct(g_redis, "user0property", temp)
-	RedisGetStruct(g_redis, "levelConfig:2", temp)
-
-	fmt.Println(temp)
-	if strings.EqualFold(temp.Award, "0") {
-		fmt.Println("0000000")
-	} else {
-		fmt.Println("1111111111")
-	}
+	fmt.Println(values)
 
 }
 
@@ -94,4 +82,19 @@ func connectRedis() redis.Conn {
 		return nil
 	}
 	return g_redis
+}
+
+func savePackge() {
+	g_redis := connectRedis()
+	temp := &TLevelConfig{}
+
+	//RedisSetStruct(g_redis, "user0property", temp)
+	RedisGetStruct(g_redis, "levelConfig:2", temp)
+
+	fmt.Println(temp)
+	if strings.EqualFold(temp.Award, "0") {
+		fmt.Println("0000000")
+	} else {
+		fmt.Println("1111111111")
+	}
 }

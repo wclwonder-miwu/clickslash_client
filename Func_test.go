@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	//"strings"
+	. "clickslash/protos"
+	. "clickslash/utils"
 	"testing"
 
 	"github.com/golang/protobuf/proto"
@@ -22,18 +24,18 @@ func TestMain(t *testing.T) {
 
 func savepackage() {
 	fmt.Println(strconv.Atoi("525"))
+	strings.Split("fdddd:fkfkf", ":")
 }
 
 func testGrammar() {
 	//checkAlone("1111111")
 	fmt.Println(len("寒"))
 
-	temp := "sdkffkf"
-	ff1 := strings.ToUpper(string(temp[0]))
-
-	temp = ff1 + temp[1:]
-	fmt.Println(temp)
-
+	temp := &TUser{}
+	temp.MaxEnergy = 10
+	map1 := map[string]interface{}{}
+	StructCoverMap(temp, map1)
+	fmt.Println(map1)
 }
 
 func testPlaySign() {

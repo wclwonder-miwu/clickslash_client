@@ -22,6 +22,7 @@ const ERROR_STRING = `{"ret":1,"msg":"%s"}`
 const ERROR_MSG_TOKEN = `TOKEN ERROR`
 const ERROR_MSG_ENERGY = `ENERGY NOT ENOUGH`
 const ERROR_MSG_CHEAT = `ERROR CHEAT`
+const ERROR_MSG_SIGN = `SIGN ERROR`
 
 type NetAPI struct {
 	x         int
@@ -179,7 +180,7 @@ func (this *NetAPI) isMachineExist(machine *string) bool {
 func (this *NetAPI) onLogin(uid *string, password *string) string {
 
 	strKey := fmt.Sprintf("user:%s:property", *uid)
-	fmt.Println(strKey)
+	fmt.Println("onlogin=", strKey)
 
 	password_server, _ := redis.String(this.redisConn.Do("HGET", strKey, "Password"))
 
@@ -220,18 +221,21 @@ func (this *NetAPI) onUser(access_token *string) string {
 	tempMap["ret"] = 0
 	tempMap["blocks"] = []int{}
 	tempMap["items"] = []int{}
-	tempMap["cur_level"] = 0
+
+	tempMap["cur_level"] = this.redisBase.UpateCurLevel(&uid, 0)
 
 	user := this.redisBase.CreateMapUser(&uid)
 
 	tempMap["user"] = user
+
+	tempMap["blocks"] = this.redisBase.GetBlocksData(&uid, -1, 0)
 
 	str1, err := json.Marshal(tempMap)
 	if err != nil {
 		fmt.Println(err)
 	}
 
-	fmt.Println("showlog=")
+	fmt.Println("onuser %s=", uid)
 	fmt.Println(string(str1))
 
 	return string(str1)
@@ -239,6 +243,7 @@ func (this *NetAPI) onUser(access_token *string) string {
 
 //关卡开始，只要扣体力
 func (this *NetAPI) onBegin(level int, access_token *string) string {
+	fmt.Println("onBegin")
 	str := strings.Split(*access_token, "#")
 	uid := str[0]
 	strKey := fmt.Sprintf("user:%s:property", uid)
@@ -280,20 +285,24 @@ func (this *NetAPI) checkSign(req *http.Request) bool {
 
 	str := ""
 	for i, _ := range keys {
+
+		if strings.EqualFold(keys[i], "sign") || strings.EqualFold("r", keys[i]) {
+			continue
+		}
 		if str != "" {
 			str += "&"
 		}
-		if strings.EqualFold(req.Form[keys[i]][0], "sign") {
-			continue
-		}
 		str += keys[i] + "=" + req.Form[keys[i]][0]
 	}
+	fmt.Println(str)
 
 	md5Ctx := md5.New()
 	md5Ctx.Write([]byte(str))
 	cipherStr := md5Ctx.Sum(nil)
 
 	password_server := strings.ToUpper(hex.EncodeToString(cipherStr))
+
+	fmt.Println(password_server, req.Form["sign"][0])
 
 	if strings.EqualFold(password_server, req.Form["sign"][0]) {
 		return true
@@ -305,10 +314,10 @@ func (this *NetAPI) checkSign(req *http.Request) bool {
 //关卡结算
 func (this *NetAPI) onPlay(req *http.Request) string {
 	access_token := req.Form["access_token"][0]
-
+	fmt.Println("onplay")
 	//检测签名
 	if !this.checkSign(req) {
-		return fmt.Sprintf(ERROR_STRING, ERROR_MSG_ENERGY)
+		return fmt.Sprintf(ERROR_STRING, ERROR_MSG_SIGN)
 	}
 
 	//判断分数，目标
@@ -330,11 +339,16 @@ func (this *NetAPI) onPlay(req *http.Request) string {
 	levelSave.PigSave = int32(PigSave)
 	Score, _ := strconv.Atoi(req.Form["score"][0])
 	levelSave.Score = int32(Score)
-
+	cur_level := 1
 	if pass == 0 {
 		//User:id:blocks:n
 		fields := []int{0, 2, 3, 4}
-		RedisHSetStruct(this.redisConn, "user:"+uid+":blocks"+level, levelSave, fields...)
+		RedisHSetStruct(this.redisConn, "user:"+uid+":blocks:"+level, levelSave, fields...)
+
+		//胜利检查是否有奖励
+		this.checkLevelGift(&uid, levelCfg)
+		//更新当前关
+		cur_level = this.redisBase.UpateCurLevel(&uid, int(levelCfg.ID))
 	}
 
 	tempMap := make(map[string]interface{})
@@ -345,12 +359,10 @@ func (this *NetAPI) onPlay(req *http.Request) string {
 	tempMap["user"] = user
 
 	//关卡数据
-	blocks := []map[string]interface{}{
-		map[string]interface{}{
-			"pig_save": 2, "draw_count": 0, "ex": 3, "id": 1, "score": 17509,
-		}}
+	blocks := this.redisBase.GetBlocksData(&uid, int(levelCfg.ID), int(levelCfg.ID))
 	tempMap["blocks"] = blocks
 
+	tempMap["cur_level"] = cur_level
 	addUserData(tempMap)
 
 	//返回
@@ -367,13 +379,15 @@ func (this *NetAPI) onPlay(req *http.Request) string {
 //判断分数和目标是否达到.胜利、失败、作弊
 func (this *NetAPI) checkLevelScore(req *http.Request, levelCfg *TLevelConfig) int {
 	scores := levelCfg.Score
-	scores = scores[1 : len(scores)-1]
-	scores0, _ := strconv.Atoi(string(scores[0]))
+	scores = scores[1 : len(scores)-1] //去掉大括号
+	scoreArr := strings.Split(scores, ":")
+	scores1, _ := strconv.Atoi(string(scoreArr[0]))
+	scores3, _ := strconv.Atoi(string(scoreArr[2]))
 
 	score, _ := strconv.Atoi(req.Form["score"][0])
-	if score < scores0 {
+	if score < scores1 {
 		return 1
-	} else if score > scores0*2 {
+	} else if score > scores3*2 {
 		return 2
 	}
 
@@ -402,7 +416,20 @@ func (this *NetAPI) checkLevelScore(req *http.Request, levelCfg *TLevelConfig) i
 
 //如果有道具，送道具
 func (this *NetAPI) checkLevelGift(uid *string, levelCfg *TLevelConfig) {
-	if levelCfg.Award == "" {
 
+	strKey := fmt.Sprintf("user:%s:blocks:%d", *uid, levelCfg.ID)
+	_, err := this.redisConn.Do("GET", strKey)
+
+	if err == nil {
+		//已经打过这一关，不用再发
+		return
 	}
+	if strings.EqualFold(levelCfg.Award, "0") {
+		return
+	}
+
+	strAward := strings.Split(levelCfg.Award, ":")
+
+	strKey = fmt.Sprintf("user:%s:props", *uid)
+	this.redisConn.Do("HINCRBY", strKey, strAward[0], strAward[1])
 }

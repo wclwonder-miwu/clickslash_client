@@ -1,8 +1,6 @@
 package main
 
 func addUserData(ret map[string]interface{}) {
-	ret["items"] = []map[string]int{
-		map[string]int{"uid": 2786, "id": 910, "num": 3}}
 	ret["cur_level"] = 1
 	ret["reward_id"] = 0
 	ret["gift"] = []int{}
