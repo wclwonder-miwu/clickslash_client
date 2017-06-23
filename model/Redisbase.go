@@ -134,7 +134,7 @@ func (this *Redisbase) GetLevelConfig(level string) *TLevelConfig {
 	return levelCfg
 }
 
-func (this *Redisbase) AddUserData(uid *string, ret map[string]interface{}) {
+func (this *Redisbase) AddUserData(ret map[string]interface{}) {
 	//额外的一些数据
 	ret["reward_id"] = 0
 	ret["gift_back_time"] = 0

@@ -363,7 +363,7 @@ func (this *NetAPI) onPlay(req *http.Request) string {
 	tempMap["blocks"] = blocks
 
 	tempMap["cur_level"] = cur_level
-	addUserData(tempMap)
+	this.redisBase.AddUserData(tempMap)
 
 	//返回
 	str1, err := json.Marshal(tempMap)
